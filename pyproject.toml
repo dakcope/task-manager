@@ -1,0 +1,26 @@
+[project]
+name = "task-api-manager"
+version = "0.0.1"
+description = "Test-Description"
+authors = [
+    {name = "Valeriy"}
+]
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi (>=0.127.0,<0.128.0)",
+    "sqlalchemy (>=2.0.45,<3.0.0)",
+    "alembic (>=1.17.2,<2.0.0)",
+    "pydantic-settings (>=2.12.0,<3.0.0)",
+    "psycopg[binary] (>=3.3.2,<4.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+dev = [
+    "pytest (>=9.0.2,<10.0.0)"
+]
