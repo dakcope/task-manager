@@ -1,14 +1,13 @@
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.enums import Priority, TaskStatus
 from app.db.session import get_db
 from app.schemas.tasks import TaskCreate, TaskListRead, TaskRead, TaskStatusRead
 from app.services.task_service import TaskService
-from app.utils.exceptions import ConflictError, NotFoundError
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -25,10 +24,7 @@ def create_task(payload: TaskCreate, svc: TaskService = Depends(get_service)) ->
 
 @router.get("/{task_id}", response_model=TaskRead)
 def get_task(task_id: UUID, svc: TaskService = Depends(get_service)) -> TaskRead:
-    try:
-        task = svc.get_task(task_id)
-    except NotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    task = svc.get_task(task_id)
     return TaskRead.model_validate(task)
 
 
@@ -50,19 +46,11 @@ def list_tasks(
 
 @router.get("/{task_id}/status", response_model=TaskStatusRead)
 def get_task_status(task_id: UUID, svc: TaskService = Depends(get_service)) -> TaskStatusRead:
-    try:
-        task = svc.get_task(task_id)
-    except NotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    task = svc.get_task(task_id)
     return TaskStatusRead(id=task.id, status=task.status)
 
 
 @router.delete("/{task_id}", response_model=TaskRead)
 def cancel_task(task_id: UUID, svc: TaskService = Depends(get_service)) -> TaskRead:
-    try:
-        task = svc.cancel_task(task_id)
-    except NotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except ConflictError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+    task = svc.cancel_task(task_id)
     return TaskRead.model_validate(task)

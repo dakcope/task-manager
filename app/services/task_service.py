@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -7,6 +8,9 @@ from app.db.models.task import Task
 from app.repositories.task_repo import TaskRepository
 from app.utils.exceptions import ConflictError, NotFoundError
 
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 class TaskService:
     def __init__(self, db: Session) -> None:
@@ -48,7 +52,8 @@ class TaskService:
             raise ConflictError(f"Cannot cancel task in status {task.status}")
 
         task.status = TaskStatus.CANCELLED
-        #TODO finished_at
+        task.finished_at = utcnow()
+
         self._db.commit()
         self._db.refresh(task)
         return task

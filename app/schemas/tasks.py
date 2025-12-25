@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from app.core.enums import Priority, TaskStatus
 
@@ -14,6 +14,8 @@ class TaskCreate(BaseModel):
 
 
 class TaskRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     title: str
     description: Optional[str]
@@ -24,9 +26,6 @@ class TaskRead(BaseModel):
     finished_at: Optional[datetime]
     result: Optional[str]
     error: Optional[str]
-
-    class Config:
-        from_attributes = True
 
 
 class TaskStatusRead(BaseModel):
