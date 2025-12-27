@@ -1,5 +1,3 @@
-from typing import Optional
-
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,12 +17,15 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str
     POSTGRES_HOST: str
     POSTGRES_PORT: int = 5432
+    DATABASE_URL: str | None = None
 
-    DATABASE_URL: Optional[str] = None
-    RABBITMQ_URL: Optional[str] = None
+    RABBITMQ_URL: str
+    TASKS_QUEUE_HIGH: str = "tasks.high"
+    TASKS_QUEUE_MEDIUM: str = "tasks.medium"
+    TASKS_QUEUE_LOW: str = "tasks.low"
 
     @property
-    def db_url(self) -> str:
+    def database_url(self) -> str:
         if self.DATABASE_URL:
             return self.DATABASE_URL
         return (

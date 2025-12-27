@@ -1,4 +1,3 @@
-from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
@@ -32,8 +31,8 @@ def get_task(task_id: UUID, svc: TaskService = Depends(get_service)) -> TaskRead
 def list_tasks(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    status_filter: Optional[TaskStatus] = Query(default=None, alias="status"),
-    priority_filter: Optional[Priority] = Query(default=None, alias="priority"),
+    status_filter: TaskStatus | None = Query(default=None, alias="status"),
+    priority_filter: Priority | None = Query(default=None, alias="priority"),
     svc: TaskService = Depends(get_service),
 ) -> TaskListRead:
     items = svc.list_tasks(limit=limit, offset=offset, status=status_filter, priority=priority_filter)

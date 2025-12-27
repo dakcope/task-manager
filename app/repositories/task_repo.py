@@ -1,4 +1,3 @@
-from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import Select, select, update
@@ -16,7 +15,7 @@ class TaskRepository:
         self._db.flush()
         return task
 
-    def get(self, task_id: UUID) -> Optional[Task]:
+    def get(self, task_id: UUID) -> Task | None:
         return self._db.get(Task, task_id)
 
     def list(
@@ -24,8 +23,8 @@ class TaskRepository:
         *,
         limit: int,
         offset: int,
-        status: Optional[TaskStatus] = None,
-        priority: Optional[Priority] = None,
+        status: TaskStatus | None = None,
+        priority: Priority | None = None,
     ) -> list[Task]:
         stmt: Select = select(Task).order_by(Task.created_at.desc()).limit(limit).offset(offset)
         if status is not None:

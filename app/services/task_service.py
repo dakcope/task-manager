@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 from app.core.enums import Priority, TaskStatus
 from app.db.models.task import Task
 from app.repositories.task_repo import TaskRepository
-from app.utils.exceptions import ConflictError, NotFoundError
+from app.services.publisher import TaskPublisher
+from app.utils.exceptions import ConflictError, ExternalServiceError, NotFoundError
 
 
 def utcnow() -> datetime:
@@ -16,6 +17,7 @@ class TaskService:
     def __init__(self, db: Session) -> None:
         self._db = db
         self._repo = TaskRepository(db)
+        self._publisher = TaskPublisher()
 
     def create_task(self, *, title: str, description: str | None, priority: Priority) -> Task:
         task = Task(
@@ -24,10 +26,21 @@ class TaskService:
             priority=priority,
             status=TaskStatus.NEW,
         )
-        self._repo.create(task)
-        self._db.commit()
-        self._db.refresh(task)
-        return task
+
+        self._db.add(task)
+        self._db.flush()
+
+        try:
+            self._publisher.publish_task_created(task.id, task.priority)
+            task.status = TaskStatus.PENDING
+
+            self._db.commit()
+            self._db.refresh(task)
+            return task
+
+        except Exception as exc:
+            self._db.rollback()
+            raise ExternalServiceError("RabbitMQ is unavailable") from exc
 
     def get_task(self, task_id: UUID) -> Task:
         task = self._repo.get(task_id)
