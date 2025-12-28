@@ -20,12 +20,14 @@ class Settings(BaseSettings):
     DATABASE_URL: str | None = None
 
     RABBITMQ_URL: str
+    RABBITMQ_ENABLED: bool = True
+
     TASKS_QUEUE_HIGH: str = "tasks.high"
     TASKS_QUEUE_MEDIUM: str = "tasks.medium"
     TASKS_QUEUE_LOW: str = "tasks.low"
 
     @property
-    def database_url(self) -> str:
+    def db_url(self) -> str:
         if self.DATABASE_URL:
             return self.DATABASE_URL
         return (

@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 import pika
+import time
 from pika.adapters.blocking_connection import BlockingChannel
 
 from app.core.config import settings
@@ -24,7 +25,14 @@ QUEUES = RabbitQueues(
 
 def _connect() -> pika.BlockingConnection:
     params = pika.URLParameters(settings.RABBITMQ_URL)
-    return pika.BlockingConnection(params)
+    last = None
+    for _ in range(60):
+        try:
+            return pika.BlockingConnection(params)
+        except Exception as e:
+            last = e
+            time.sleep(1)
+    raise last
 
 
 def _declare_queues(channel: BlockingChannel) -> None:

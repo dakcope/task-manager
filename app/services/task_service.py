@@ -17,7 +17,6 @@ class TaskService:
     def __init__(self, db: Session) -> None:
         self._db = db
         self._repo = TaskRepository(db)
-        self._publisher = TaskPublisher()
 
     def create_task(self, *, title: str, description: str | None, priority: Priority) -> Task:
         task = Task(
@@ -30,16 +29,20 @@ class TaskService:
         self._db.add(task)
         self._db.flush()
 
-        try:
-            self._publisher.publish_task_created(task.id, task.priority)
-            task.status = TaskStatus.PENDING
+        task.status = TaskStatus.PENDING
+        self._db.commit()
+        self._db.refresh(task)
 
-            self._db.commit()
-            self._db.refresh(task)
+        try:
+            TaskPublisher().publish_task_created(task.id, task.priority)
             return task
 
         except Exception as exc:
-            self._db.rollback()
+            task.status = TaskStatus.FAILED
+            task.error = str(exc)
+            task.finished_at = utcnow()
+            self._db.commit()
+            self._db.refresh(task)
             raise ExternalServiceError("RabbitMQ is unavailable") from exc
 
     def get_task(self, task_id: UUID) -> Task:
