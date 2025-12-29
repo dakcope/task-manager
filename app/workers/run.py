@@ -1,3 +1,4 @@
+import logging
 import time
 
 import pika
@@ -5,6 +6,7 @@ import pika
 from app.core.config import settings
 from app.workers.consumer import _declare, on_message
 
+logger = logging.getLogger(__name__)
 
 def _connect() -> pika.BlockingConnection:
     params = pika.URLParameters(settings.RABBITMQ_URL)
@@ -18,7 +20,16 @@ def _connect() -> pika.BlockingConnection:
     raise last
 
 
+def _get_queues() -> list[str]:
+    raw = getattr(settings, "WORKER_QUEUES", None)
+    if raw:
+        return [q.strip() for q in raw.split(",") if q.strip()]
+    return [settings.TASKS_QUEUE_HIGH, settings.TASKS_QUEUE_MEDIUM, settings.TASKS_QUEUE_LOW]
+
+
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+
     conn = _connect()
     ch = conn.channel()
 
@@ -27,7 +38,10 @@ def main() -> None:
     prefetch = int(getattr(settings, "WORKER_PREFETCH", 1))
     ch.basic_qos(prefetch_count=prefetch)
 
-    for q in (settings.TASKS_QUEUE_HIGH, settings.TASKS_QUEUE_MEDIUM, settings.TASKS_QUEUE_LOW):
+    queues = _get_queues()
+    logger.info(f"Воркер запущен. prefetch={prefetch} queues={queues}")
+
+    for q in queues:
         ch.basic_consume(queue=q, on_message_callback=on_message, auto_ack=False)
 
     try:

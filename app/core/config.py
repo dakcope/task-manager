@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     TASKS_QUEUE_MEDIUM: str = "tasks.medium"
     TASKS_QUEUE_LOW: str = "tasks.low"
 
+    OUTBOX_ENABLED: bool = True
+    OUTBOX_POLL_INTERVAL: float = 0.5
+    OUTBOX_BATCH_SIZE: int = 200
+    OUTBOX_MAX_ATTEMPTS: int = 20
+
+    WORKER_QUEUES: str | None = None
+
     @property
     def db_url(self) -> str:
         if self.DATABASE_URL:

@@ -14,3 +14,8 @@ class TaskStatus(str, Enum):
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
+
+class OutboxStatus(str, Enum):
+    NEW = "NEW"
+    SENT = "SENT"
+    FAILED = "FAILED"
