@@ -7,7 +7,7 @@ from app.utils.exceptions import NotFoundError, ConflictError, ExternalServiceEr
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title=settings.APP_NAME)
+    app = FastAPI(title="Task-api-manager")
     app.include_router(v1_router)
 
     @app.exception_handler(NotFoundError)

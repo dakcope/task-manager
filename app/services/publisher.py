@@ -16,6 +16,9 @@ class TaskPublisher:
         routing_key, payload = self.build_task_created(task_id, priority)
         publish(queue_name=routing_key, payload=payload)
 
+    def publish_raw(self, routing_key: str, payload: dict) -> None:
+        publish(queue_name=routing_key, payload=payload)
+
 
 def _queue_for_priority(priority: Priority) -> str:
     mapping = {

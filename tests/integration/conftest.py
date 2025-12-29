@@ -58,15 +58,14 @@ def _run_alembic_upgrade(db_url: str) -> None:
 @pytest.fixture(scope="session")
 def engine():
     url = make_db_url()
-    eng = create_engine(url, pool_pre_ping=True)
+    _run_alembic_upgrade(url)
 
+    eng = create_engine(url, future=True, pool_pre_ping=True)
     try:
         with eng.connect() as conn:
             conn.execute(text("SELECT 1"))
     except OperationalError as e:
-        pytest.skip(f"Postgres is not available. DSN={url}. Error={repr(e)}")
-
-    _run_alembic_upgrade(url)
+        raise RuntimeError(f"ДБ не доступна: {e}") from e
     return eng
 
 
@@ -79,7 +78,7 @@ def db_session(engine) -> Generator[Session, None, None]:
     finally:
         db.rollback()
         try:
-            db.execute(text("TRUNCATE TABLE tasks RESTART IDENTITY CASCADE"))
+            db.execute(text("TRUNCATE TABLE outbox_events, tasks RESTART IDENTITY CASCADE"))
             db.commit()
         except Exception:
             db.rollback()

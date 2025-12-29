@@ -4,6 +4,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.enums import Priority, TaskStatus
 from app.db.models.task import Task
 from app.repositories.outbox_repo import OutboxRepository
@@ -19,7 +20,7 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 class TaskService:
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: Session):
         self._db = db
         self._repo = TaskRepository(db)
         self._outbox = OutboxRepository(db)
@@ -36,17 +37,11 @@ class TaskService:
         self._outbox.add(OutboxEvent(task_id=task.id, routing_key=routing_key, payload=payload))
         self._db.commit()
         self._db.refresh(task)
-
-        try:
-            publisher.publish_task_created(task.id, task.priority)
-        except Exception:
-            logger.exception(f"Обработка задачи отложена. task_id={task.id}")
-
         return task
 
     def get_task(self, task_id: UUID) -> Task:
         task = self._repo.get(task_id)
-        if task is None:
+        if not task:
             raise NotFoundError(f"Задача task_id={task_id} не найдена.")
         return task
 

@@ -20,25 +20,22 @@ def _connect() -> pika.BlockingConnection:
     raise last
 
 
-def _get_queues() -> list[str]:
-    raw = getattr(settings, "WORKER_QUEUES", None)
-    if raw:
-        return [q.strip() for q in raw.split(",") if q.strip()]
-    return [settings.TASKS_QUEUE_HIGH, settings.TASKS_QUEUE_MEDIUM, settings.TASKS_QUEUE_LOW]
-
-
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
-
+    logging.basicConfig(
+        level=getattr(logging, str(getattr(settings, "LOG_LEVEL", "INFO")).upper(), logging.INFO), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     conn = _connect()
     ch = conn.channel()
 
     _declare(ch)
 
-    prefetch = int(getattr(settings, "WORKER_PREFETCH", 1))
+    prefetch = settings.WORKER_PREFETCH
     ch.basic_qos(prefetch_count=prefetch)
 
-    queues = _get_queues()
+    if settings.WORKER_QUEUES:
+        queues = [q.strip() for q in settings.WORKER_QUEUES.split(",") if q.strip()]
+    else:
+        queues = [settings.TASKS_QUEUE_HIGH, settings.TASKS_QUEUE_MEDIUM, settings.TASKS_QUEUE_LOW]
+
     logger.info(f"Воркер запущен. prefetch={prefetch} queues={queues}")
 
     for q in queues:

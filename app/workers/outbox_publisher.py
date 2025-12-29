@@ -19,10 +19,6 @@ def _backoff(attempt: int) -> timedelta:
 
 
 def run_forever() -> None:
-    if not settings.OUTBOX_ENABLED:
-        logger.info("Outbox выключен")
-        return
-
     logger.info(f"Outbox запущен. interval={settings.OUTBOX_POLL_INTERVAL}s batch={settings.OUTBOX_BATCH_SIZE}")
 
     while True:

@@ -13,7 +13,9 @@ from app.db.session import SessionLocal
 
 logger = logging.getLogger(__name__)
 
-RETRY_DELAYS_SECONDS: list[int] = [1, 5, 30, 120]
+
+def _retry_delays() -> list[int]:
+    return settings.retry_delays
 
 
 def _now() -> datetime:
@@ -30,7 +32,7 @@ def _declare(channel: pika.adapters.blocking_connection.BlockingChannel) -> None
         channel.queue_declare(queue=q, durable=True)
 
     for q in base:
-        for delay in RETRY_DELAYS_SECONDS:
+        for delay in _retry_delays():
             channel.queue_declare(
                 queue=_retry_queue_name(q, delay),
                 durable=True,
@@ -43,41 +45,49 @@ def _declare(channel: pika.adapters.blocking_connection.BlockingChannel) -> None
 
 
 def _retry_count(props: pika.BasicProperties) -> int:
-    v = (props.headers or {}).get("x-retry-count", 0)
+    headers = getattr(props, "headers", None) or {}
     try:
-        return int(v)
+        return int(headers.get("x-retry-count", 0))
     except Exception:
         return 0
 
 
-def _republish(channel, routing_key: str, body: bytes, props: pika.BasicProperties, retry_count: int) -> None:
-    headers = dict(props.headers or {})
+def _with_retry(props: pika.BasicProperties, retry_count: int) -> pika.BasicProperties:
+    headers = dict(getattr(props, "headers", None) or {})
     headers["x-retry-count"] = retry_count
-    delay = RETRY_DELAYS_SECONDS[min(retry_count - 1, len(RETRY_DELAYS_SECONDS) - 1)]
-    channel.basic_publish(
-        exchange="",
-        routing_key=_retry_queue_name(routing_key, delay),
-        body=body,
-        properties=pika.BasicProperties(content_type="application/json", delivery_mode=2, headers=headers),
-    )
-
-
-def _publish_dlq(channel, body: bytes, props: pika.BasicProperties) -> None:
-    channel.basic_publish(
-        exchange="",
-        routing_key="tasks.dlq",
-        body=body,
-        properties=pika.BasicProperties(
-            content_type="application/json",
-            delivery_mode=2,
-            headers=dict(props.headers or {}),
-        ),
+    return pika.BasicProperties(
+        content_type=getattr(props, "content_type", None),
+        delivery_mode=getattr(props, "delivery_mode", 2),
+        headers=headers,
     )
 
 
 def _parse(body: bytes) -> UUID:
-    data = json.loads(body.decode("utf-8"))
-    return UUID(str(data["task_id"]))
+    payload = json.loads(body.decode("utf-8"))
+    return UUID(str(payload["task_id"]))
+
+
+def _republish_delayed(channel, routing_key: str, body: bytes, props: pika.BasicProperties, retry_count: int) -> None:
+    delay = _retry_delays()[min(retry_count - 1, len(_retry_delays()) - 1)]
+    channel.basic_publish(
+        exchange="",
+        routing_key=_retry_queue_name(routing_key, delay),
+        body=body,
+        properties=_with_retry(props, retry_count),
+    )
+
+
+def _republish_same_queue(channel, routing_key: str, body: bytes, props: pika.BasicProperties, retry_count: int) -> None:
+    channel.basic_publish(
+        exchange="",
+        routing_key=routing_key,
+        body=body,
+        properties=_with_retry(props, retry_count),
+    )
+
+
+def _publish_dlq(channel, body: bytes, props: pika.BasicProperties) -> None:
+    channel.basic_publish(exchange="", routing_key="tasks.dlq", body=body, properties=props)
 
 
 def _claim(db, task_id: UUID) -> bool:
@@ -86,7 +96,7 @@ def _claim(db, task_id: UUID) -> bool:
         .where(Task.id == task_id, Task.status == TaskStatus.PENDING)
         .values(status=TaskStatus.IN_PROGRESS, started_at=_now())
     )
-    return (res.rowcount or 0) == 1
+    return (res.rowcount or 0) > 0
 
 
 def _complete(db, task_id: UUID, result: str) -> None:
@@ -121,42 +131,60 @@ def on_message(channel, method, props: pika.BasicProperties, body: bytes) -> Non
 
     db = SessionLocal()
     try:
-        if not _claim(db, task_id):
-            db.commit()
-            logger.info(f"Задача пропущена: нет статуса  PENDING. task_id={task_id} queue={routing_key}")
-            channel.basic_ack(method.delivery_tag)
-            return
-
         try:
-            logger.info(f"Старт обработки задачи. task_id={task_id} queue={routing_key}")
-            result = _execute(task_id)
-            _complete(db, task_id, result)
-            db.commit()
-            logger.info(f"Задача завершена успешно. task_id={task_id}")
-            channel.basic_ack(method.delivery_tag)
-            return
-        except Exception as e:
-            _fail(db, task_id, str(e))
-            db.commit()
-            logger.exception(f"Ошибка обработки задачи. task_id={task_id}")
-            channel.basic_ack(method.delivery_tag)
-            return
+            if not _claim(db, task_id):
+                db.commit()
+                logger.info(f"Задача пропущена: нет статуса PENDING. task_id={task_id} queue={routing_key}")
+                return
 
-    except Exception:
-        db.rollback()
-        max_retries = int(getattr(settings, "MAX_RETRIES", 5))
-        n = _retry_count(props) + 1
-        if n > max_retries:
-            _publish_dlq(channel, body, props)
-            logger.exception(f"Не удалось обработать, экспорт в dlq. task_id={task_id} queue={routing_key} retries={n}")
-        else:
-            _republish(channel, routing_key, body, props, n)
-            delay = RETRY_DELAYS_SECONDS[min(n - 1, len(RETRY_DELAYS_SECONDS) - 1)]
-            logger.exception(
-                f"Ошибка обработки, повтор через {delay}сек. task_id={task_id} queue={routing_key} retries={n}"
-            )
+            try:
+                logger.info(f"Старт обработки задачи. task_id={task_id} queue={routing_key}")
+                result = _execute(task_id)
+                _complete(db, task_id, result)
+                db.commit()
+                logger.info(f"Задача завершена успешно. task_id={task_id}")
+            except Exception as e:
+                n = _retry_count(props) + 1
+                max_retries = settings.MAX_RETRIES
 
-        channel.basic_ack(method.delivery_tag)
+                _fail(db, task_id, str(e))
+                db.commit()
+
+                if n > max_retries:
+                    _publish_dlq(channel, body, props)
+                    logger.exception(
+                        f"Не удалось обработать, экспорт в dlq. task_id={task_id} queue={routing_key} retries={n}"
+                    )
+                else:
+                    _republish_delayed(channel, routing_key, body, props, n)
+                    delay = _retry_delays()[min(n - 1, len(_retry_delays()) - 1)]
+                    logger.exception(
+                        f"Ошибка обработки, повтор через {delay}сек. task_id={task_id} queue={routing_key} retries={n}"
+                    )
+
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+
+            n = _retry_count(props) + 1
+            max_retries = settings.MAX_RETRIES
+
+            if n > max_retries:
+                _publish_dlq(channel, body, props)
+                logger.exception(
+                    f"Внешняя ошибка, экспорт в dlq. task_id={task_id} queue={routing_key} retries={n}"
+                )
+            else:
+                _republish_same_queue(channel, routing_key, body, props, n)
+                logger.exception(
+                    f"Внешняя ошибка. task_id={task_id} queue={routing_key} retries={n}"
+                )
+
+        finally:
+            channel.basic_ack(method.delivery_tag)
+
     finally:
         db.close()
 
