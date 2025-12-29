@@ -37,7 +37,7 @@
 
 Поднимаем контейнер, сразу на данном этапе скалируем воркеров
 ```bash
-docker compose up -d --scale worker_high=1 --scale worker=2
+docker compose up -d --build --scale worker_high=1 --scale worker=2
 ```
 
 ## 2. Настройка окружения
